@@ -103,7 +103,7 @@ while True:
             if d[i] == input_char:
                 # Found a match:
                 match_offset = offset + i
-                log.debug('found character match at file offset {}'.format(match_offset))
+                log.debug('found character match at file offset 0x{:09X}'.format(match_offset))
                 input_handle.seek(match_offset - args.context_left)
                 context = input_handle.read(context_blocksize)
                 print_result(context, match_offset)

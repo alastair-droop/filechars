@@ -21,7 +21,7 @@ from sys import stdin, stderr, exit
 from signal import signal, SIGPIPE, SIG_DFL
 signal(SIGPIPE, SIG_DFL) 
 
-version = '0.1a'
+version = '0.2a'
 parser = argparse.ArgumentParser(description='Tabulate single (8-byte) characters in a file')
 parser.add_argument('-v', '--version', action='version', version='%(prog)s {0}'.format(version))
 parser.add_argument('-V', '--verbose', dest='verbosity_level', default='warning', choices=['error', 'warning', 'info', 'debug'], help='Set logging level (default warning)')
@@ -73,8 +73,8 @@ while True:
 log.debug('finished reading {} bytes'.format(input_handle.tell()))
 
 # Set the character labels:
-if args.include_repr is True: chr_labels = ['0x{:X}\t{}'.format(c, repr(chr(c))) for c in range(256)]
-else: chr_labels = ['0x{:X}'.format(c) for c in range(256)]
+if args.include_repr is True: chr_labels = ['0x{:02X}\t{}'.format(c, repr(chr(c))) for c in range(256)]
+else: chr_labels = ['0x{:02X}'.format(c) for c in range(256)]
 
 # Get the indices to use:
 if args.sort is True: char_indices = reversed([i[0] for i in sorted(enumerate(byte_counts), key=lambda x:x[1])])
