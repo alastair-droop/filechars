@@ -98,7 +98,7 @@ while True:
     try:
         offset = input_handle.tell()
         d = input_handle.read(blocksize)
-        log.debug('read block ({} bytes) at file offset {}'.format(len(d), offset))
+        log.debug('read block ({} bytes) at file offset 0x{:09X}'.format(len(d), offset))
         for i in range(len(d)):
             if d[i] == input_char:
                 # Found a match:
