@@ -1,0 +1,114 @@
+#!/usr/bin/env python3
+
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+import argparse
+import logging
+from sys import stdin, stderr, exit
+
+# Handle broken pipes:
+from signal import signal, SIGPIPE, SIG_DFL
+signal(SIGPIPE, SIG_DFL) 
+
+version = '0.2a'
+defaults = {'verbosity_level':'error', 'context_left':5, 'context_right':5, 'blocksize':'1G'}
+parser = argparse.ArgumentParser(description='Shows context for a specified character')
+parser.add_argument('-v', '--version', action='version', version='%(prog)s {0}'.format(version))
+parser.add_argument('-V', '--verbose', dest='verbosity_level', default=defaults['verbosity_level'], choices=['error', 'info', 'debug'], help='Set logging level (default {verbosity_level})'.format(**defaults))
+parser.add_argument('-l', '--context-left', dest='context_left', metavar='<n>', type=int, default=defaults['context_left'], help='match context left-hand size (default {context_left})'.format(**defaults))
+parser.add_argument('-r', '--context-right', dest='context_right', metavar='<n>', type=int, default=defaults['context_right'], help='match context right-hand size (default {context_right})'.format(**defaults))
+parser.add_argument('-s', '--return-string', dest='return_string', action='store_true', default=False, help='translate context string')
+parser.add_argument('-b', '--block-size', dest='blocksize', metavar='<n>', type=str, default=defaults['blocksize'], help='block read size (default {blocksize})'.format(**defaults))
+parser.add_argument(dest='char', metavar='<c>', type=str, help='query character in hex format')
+parser.add_argument(dest='input_file', metavar='<file>', nargs='?', default=None, help='input file')
+args = parser.parse_args()
+
+# Set up logging based on the verbosity level set by the command line arguments:
+log = logging.getLogger()
+log_handler = logging.StreamHandler()
+log.default_msec_format = ''
+log_handler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
+log.setLevel(args.verbosity_level.upper())
+log.addHandler(log_handler)
+
+# A function to quit with an error:
+def error(msg, exit_code=1):
+    log.error(msg)
+    exit(exit_code)
+
+# Get the input character:
+try: input_char = int(args.char, 16)
+except: error('invalid character code {}'.format(args.char))
+if (input_char < 0) or (input_char > 255): error('input character {} out of range [0,255]'.format(args.char))
+log.info('using input character 0x{:X} ({})'.format(input_char, repr(chr(input_char))))
+
+# Attempt to open the input file:
+if args.input_file is None:
+    log.info('input file is stdin')
+    input_handle = stdin.buffer
+else:
+    log.info('input file is {}'.format(args.input_file))
+    try: input_handle = open(args.input_file, 'rb')
+    except Exception as err: error('failed to open input file {} ({})'.format(args.input_file, str(err)))
+
+# Process the block size:
+block_suffix = {'B':0, 'K':10, 'M':20, 'G':30}
+blocksize = args.blocksize.upper()
+try:
+    if blocksize[-1] in block_suffix.keys(): blocksize = int(blocksize[:-1]) * (2 ** block_suffix[blocksize[-1]])
+    else: blocksize = int(blocksize)
+    if blocksize < 1: raise
+    if blocksize > (1.5 * (2**30)): raise
+except: error('invalid blocksize ({})'.format(blocksize))
+log.info('using blocksize of {} bytes'.format(blocksize))
+
+# Sort the context size:
+if args.context_left < 0: error('invalid left-hand context size {}'.format(args.context_left))
+if args.context_right < 0: error('invalid right-hand context size {}'.format(args.context_right))
+context_left = args.context_left
+context_blocksize = args.context_left + args.context_right + 1
+log.info('returning {} bytes context ({} before & {} after)'.format(context_blocksize, args.context_left, args.context_right))
+
+# Define the two output options:
+def make_hex(x): return ' '.join(['{:02X}'.format(i) for i in x])
+def make_str(x): return ''.join([repr(chr(i))[1:-1] for i in x])
+
+# Set the appropriate output function:
+if args.return_string is True:
+    def print_result(x, offset):
+        print('[0x{:09X}]\t{}\t{}'.format(offset, make_hex(x), make_str(x)))
+else:
+    def print_result(x, offset):
+        print('[0x{:09X}]\t{}'.format(offset, make_hex(x)))
+
+# Read the file in blocks:
+context_blocksize = args.context_left + args.context_right + 1
+while True:
+    try:
+        offset = input_handle.tell()
+        d = input_handle.read(blocksize)
+        log.debug('read block ({} bytes) at file offset {}'.format(len(d), offset))
+        for i in range(len(d)):
+            if d[i] == input_char:
+                # Found a match:
+                match_offset = offset + i
+                log.debug('found character match at file offset {}'.format(match_offset))
+                input_handle.seek(match_offset - args.context_left)
+                context = input_handle.read(context_blocksize)
+                print_result(context, match_offset)
+                continue
+        if len(d) != blocksize: break
+    except KeyboardInterrupt: break
+    except Exception as err: error('failed to read block ({})'.format(err))
+log.debug('finished reading {} bytes'.format(input_handle.tell()))
